@@ -1,0 +1,16 @@
+export const TAX_CONFIG = {
+  personalAllowance: 12570,
+  personalAllowanceTaperThreshold: 100000,
+  basicRateLimit: 50270,
+  higherRateLimit: 125140,
+  basicRate: 0.20,
+  higherRate: 0.40,
+  additionalRate: 0.45,
+  cgtAllowance: 3000,
+  cgtBasicRate: 0.10,
+  cgtHigherRate: 0.20,
+  dividendAllowance: 500,
+  dividendBasicRate: 0.0875,
+  dividendHigherRate: 0.3375,
+  dividendAdditionalRate: 0.3938,
+};
