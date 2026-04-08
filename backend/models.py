@@ -5,6 +5,7 @@ from typing import Any, Optional
 class UserRegister(BaseModel):
     email: str
     password: str
+    invite_code: str
 
 
 class UserLogin(BaseModel):

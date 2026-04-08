@@ -9,6 +9,7 @@ export default function LoginScreen({ onSuccess }: Props) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -19,7 +20,7 @@ export default function LoginScreen({ onSuccess }: Props) {
     try {
       const result = mode === 'login'
         ? await apiLogin(email, password)
-        : await apiRegister(email, password);
+        : await apiRegister(email, password, inviteCode);
       onSuccess(result.token, result.email);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -60,6 +61,19 @@ export default function LoginScreen({ onSuccess }: Props) {
               placeholder="••••••••"
             />
           </div>
+          {mode === 'register' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Invite code</label>
+              <input
+                type="text"
+                required
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                placeholder="Enter invite code"
+              />
+            </div>
+          )}
 
           {error && (
             <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>

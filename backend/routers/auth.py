@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, HTTPException
 from models import UserRegister, UserLogin, TokenResponse
 import database as db
@@ -8,6 +9,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(data: UserRegister):
+    expected = os.environ.get("INVITE_CODE", "")
+    if not expected or data.invite_code != expected:
+        raise HTTPException(403, "Invalid invite code")
     existing = await db.get_user_by_email(data.email)
     if existing:
         raise HTTPException(400, "Email already registered")

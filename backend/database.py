@@ -67,6 +67,15 @@ async def create_user(email: str, password_hash: str) -> dict:
 
 # ── Clients ──────────────────────────────────────────────────────────────────
 
+async def search_clients(query: str) -> list[dict]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, name, initials FROM clients WHERE name ILIKE $1 ORDER BY name LIMIT 20",
+            f"%{query}%",
+        )
+        return [dict(row) for row in rows]
+
 async def get_all_clients() -> list[dict]:
     pool = get_pool()
     async with pool.acquire() as conn:

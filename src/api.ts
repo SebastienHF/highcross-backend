@@ -24,11 +24,11 @@ export async function apiLogin(email: string, password: string): Promise<{ token
   return res.json();
 }
 
-export async function apiRegister(email: string, password: string): Promise<{ token: string; email: string }> {
+export async function apiRegister(email: string, password: string, inviteCode: string): Promise<{ token: string; email: string }> {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, invite_code: inviteCode }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

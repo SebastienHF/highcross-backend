@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import database as db
-from routers import clients, chat, artifacts, messages, recommendations, auth
+from routers import clients, chat, artifacts, messages, recommendations, auth, mcp
 
 # Load .env from the project root (one level up from backend/)
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -36,6 +36,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(mcp.router)
 app.include_router(clients.router)
 app.include_router(chat.router)
 app.include_router(artifacts.router)
