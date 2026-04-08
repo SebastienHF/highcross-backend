@@ -21,9 +21,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Adviser Workspace API", lifespan=lifespan)
 
+ALLOWED_ORIGINS = [
+    "https://lovely-axolotl-7f6eab.netlify.app",
+    "http://localhost:5173",
+    "http://localhost:4173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
