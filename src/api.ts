@@ -44,6 +44,8 @@ export async function sendMessage(
   clientId: string,
   documents?: DocumentAttachment[],
   onChunk?: (text: string) => void,
+  onToolUse?: (toolUse: { name: string; input: Record<string, unknown>; result?: string }) => void,
+  onConfirmationRequest?: (req: { id: string; tool: string; args: Record<string, unknown>; summary: string }) => void,
 ): Promise<string> {
   const response = await fetch(`${API_BASE}/api/clients/${clientId}/chat`, {
     method: 'POST',
@@ -80,6 +82,10 @@ export async function sendMessage(
           if (typeof event.text === 'string') {
             accumulated += event.text;
             onChunk?.(event.text);
+          } else if (event.tool_use && onToolUse) {
+            onToolUse(event.tool_use);
+          } else if (event.confirmation_request && onConfirmationRequest) {
+            onConfirmationRequest(event.confirmation_request);
           } else if (event.error) {
             throw new Error(event.error);
           }
@@ -102,17 +108,17 @@ export async function sendMessage(
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
 
-function normaliseClient(c: Record<string, unknown>) {
+function normaliseClient(c: Record<string, unknown>): import('./types').ClientData {
   return {
-    id: c.id,
-    name: c.name,
-    initials: c.initials,
+    id: c.id as string,
+    name: c.name as string,
+    initials: c.initials as string,
     factFind: (c.fact_find ?? c.factFind ?? {}) as Record<string, string>,
     softKnowledge: (c.soft_knowledge ?? c.softKnowledge ?? '') as string,
-    confirmedRecommendations: (c.confirmed_recommendations ?? c.confirmedRecommendations ?? []) as unknown[],
+    confirmedRecommendations: (c.confirmed_recommendations ?? c.confirmedRecommendations ?? []) as import('./types').Recommendation[],
     openItems: (c.open_items ?? c.openItems ?? []) as string[],
-    savedArtifacts: (c.saved_artifacts ?? c.savedArtifacts ?? []) as unknown[],
-    savedMessages: (c.saved_messages ?? c.savedMessages ?? []) as unknown[],
+    savedArtifacts: (c.saved_artifacts ?? c.savedArtifacts ?? []) as import('./types').Artifact[],
+    savedMessages: (c.saved_messages ?? c.savedMessages ?? []) as import('./types').ChatMessage[],
   };
 }
 
@@ -189,6 +195,22 @@ export async function apiAddRecommendation(clientId: string, rec: { type: string
 }
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
+
+export async function confirmToolAction(clientId: string, confId: string): Promise<{ ok: boolean; result: string }> {
+  const res = await fetch(`${API_BASE}/api/clients/${clientId}/confirm/${confId}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Confirm failed: ${res.status}`);
+  return res.json();
+}
+
+export async function declineToolAction(clientId: string, confId: string): Promise<void> {
+  await fetch(`${API_BASE}/api/clients/${clientId}/confirm/${confId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+}
 
 export async function apiClearMessages(clientId: string) {
   const res = await fetch(`${API_BASE}/api/clients/${clientId}/messages`, {

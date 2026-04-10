@@ -4,6 +4,15 @@ import { parseArtifacts } from '../parseArtifacts';
 import { getArtifactLabel } from '../parseArtifacts';
 import { parseExcelToText } from '../cashflowApi';
 
+const TOOL_LABELS: Record<string, string> = {
+  search_clients: 'Searched clients',
+  get_client_profile: 'Read profile',
+  get_client_artifacts: 'Read artifacts',
+  get_client_recommendations: 'Read recommendations',
+  update_client_profile: 'Update profile',
+  send_client_message: 'Send message',
+};
+
 interface PendingExcel {
   filename: string;
   text: string;
@@ -17,6 +26,8 @@ interface Props {
   onSendMessage: (content: string, documents?: DocumentAttachment[]) => void;
   onAddDocuments: (documents: DocumentAttachment[]) => void;
   onDeleteMessage: (index: number) => void;
+  onConfirmAction: (confId: string) => void;
+  onDeclineAction: (confId: string) => void;
 }
 
 function parseUserContent(content: string): { text: string; excelFilename: string | null } {
@@ -116,7 +127,7 @@ async function filesToDocuments(files: FileList | File[]): Promise<DocumentAttac
 
 const BG = '#f5f5f0';
 
-export default function ChatPanel({ client, messages, isLoading, sessionDocuments, onSendMessage, onAddDocuments, onDeleteMessage }: Props) {
+export default function ChatPanel({ client, messages, isLoading, sessionDocuments, onSendMessage, onAddDocuments, onDeleteMessage, onConfirmAction, onDeclineAction }: Props) {
   const [input, setInput] = useState('');
   const [pendingDocs, setPendingDocs] = useState<DocumentAttachment[]>([]);
   const [pendingExcel, setPendingExcel] = useState<PendingExcel | null>(null);
@@ -411,15 +422,32 @@ export default function ChatPanel({ client, messages, isLoading, sessionDocument
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                       </div>
-                      <div className="min-w-0 pt-0.5">
+                      <div className="min-w-0 pt-0.5 w-full">
+                        {/* Tool use indicators */}
+                        {msg.toolUses && msg.toolUses.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {msg.toolUses.map((t, ti) => (
+                              <span
+                                key={ti}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-full text-[11px] font-medium"
+                              >
+                                <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                {TOOL_LABELS[t.name] ?? t.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
                         {cleanContent && (
                           <div
                             className="prose text-[14px] text-gray-700 leading-relaxed"
                             dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanContent) }}
                           />
                         )}
-                        {/* Blinking cursor during streaming */}
-                        {isStreamingThisMsg && (
+                        {/* Blinking cursor during streaming — only when text is present */}
+                        {isStreamingThisMsg && cleanContent && (
                           <span className="inline-block w-0.5 h-3.5 bg-gray-500 ml-0.5 align-middle animate-pulse" />
                         )}
                         {artifacts.length > 0 && (
@@ -434,6 +462,53 @@ export default function ChatPanel({ client, messages, isLoading, sessionDocument
                                 </svg>
                                 {getArtifactLabel(a.type)}
                               </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Confirmation cards for pending write-tool actions */}
+                        {msg.confirmationRequests && msg.confirmationRequests.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {msg.confirmationRequests.map(req => (
+                              <div
+                                key={req.id}
+                                className={`rounded-xl border px-4 py-3 text-[13px] ${
+                                  req.status === 'confirmed'
+                                    ? 'bg-emerald-50 border-emerald-100'
+                                    : req.status === 'declined'
+                                    ? 'bg-gray-50 border-gray-100'
+                                    : 'bg-amber-50 border-amber-100'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-4">
+                                  <div className="min-w-0">
+                                    <p className={`font-medium text-[12px] mb-0.5 ${
+                                      req.status === 'confirmed' ? 'text-emerald-700'
+                                      : req.status === 'declined' ? 'text-gray-500'
+                                      : 'text-amber-700'
+                                    }`}>
+                                      {req.status === 'confirmed' ? '✓ Confirmed' : req.status === 'declined' ? 'Declined' : '⚡ Action requested'}
+                                    </p>
+                                    <p className="text-gray-600 text-[12px] truncate">{req.summary}</p>
+                                  </div>
+                                  {req.status === 'pending' && (
+                                    <div className="flex gap-2 shrink-0">
+                                      <button
+                                        onClick={() => onConfirmAction(req.id)}
+                                        className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-[11px] font-medium hover:bg-gray-800 transition-colors"
+                                      >
+                                        Confirm
+                                      </button>
+                                      <button
+                                        onClick={() => onDeclineAction(req.id)}
+                                        className="px-3 py-1.5 bg-white text-gray-500 rounded-lg text-[11px] font-medium hover:bg-gray-100 transition-colors border border-gray-200"
+                                      >
+                                        Decline
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             ))}
                           </div>
                         )}

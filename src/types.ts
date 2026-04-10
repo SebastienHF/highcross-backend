@@ -60,12 +60,28 @@ export interface DocumentAttachment {
   mediaType: string;
 }
 
+export interface ToolUseIndicator {
+  name: string;
+  input: Record<string, unknown>;
+  result?: string;
+}
+
+export interface ConfirmationRequest {
+  id: string;
+  tool: string;
+  args: Record<string, unknown>;
+  summary: string;
+  status: 'pending' | 'confirmed' | 'declined';
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   artifacts?: Artifact[];
   documents?: DocumentAttachment[];
   timestamp: string;
+  toolUses?: ToolUseIndicator[];
+  confirmationRequests?: ConfirmationRequest[];
 }
 
 // Client presentation types

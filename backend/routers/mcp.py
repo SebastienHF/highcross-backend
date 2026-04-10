@@ -1,67 +1,28 @@
 """
 Read-only MCP (Model Context Protocol) server — Streamable HTTP transport.
 Authentication: X-MCP-Api-Key header must match MCP_API_KEY env var.
-All tools are read-only; no write access to the database.
+All tools exposed here are read-only; write tools are not accessible via MCP.
 """
-import json
 import os
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
-import database as db
+from tools import execute_read_tool, READ_TOOLS, TOOL_DEFINITIONS as _ALL_TOOLS
 
 router = APIRouter(tags=["mcp"])
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "adviser-workspace", "version": "1.0.0"}
 
+# Expose only read tools via MCP (write tools require JWT auth + human confirmation)
 TOOLS = [
     {
-        "name": "search_clients",
-        "description": "Search clients by name. Returns matching client IDs and names.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Name fragment to search for"},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "get_client_profile",
-        "description": (
-            "Get the full profile for a client: fact find (DOB, tax position, objectives, etc.), "
-            "soft knowledge (session notes), and open items."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "client_id": {"type": "string", "description": "Client ID"},
-            },
-            "required": ["client_id"],
-        },
-    },
-    {
-        "name": "get_client_artifacts",
-        "description": "Get all confirmed artifacts for a client (scheme assessments, suitability letters, etc.).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "client_id": {"type": "string", "description": "Client ID"},
-            },
-            "required": ["client_id"],
-        },
-    },
-    {
-        "name": "get_client_recommendations",
-        "description": "Get all confirmed recommendations for a client.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "client_id": {"type": "string", "description": "Client ID"},
-            },
-            "required": ["client_id"],
-        },
-    },
+        "name": t["name"],
+        "description": t["description"],
+        # MCP uses "inputSchema" (camelCase); Anthropic API uses "input_schema"
+        "inputSchema": t["input_schema"],
+    }
+    for t in _ALL_TOOLS
+    if t["name"] in READ_TOOLS
 ]
 
 
@@ -117,64 +78,9 @@ async def _dispatch(method: str, params: dict, id) -> dict | None:
 
 
 async def _run_tool(name: str, args: dict) -> str:
-    if name == "search_clients":
-        query = args.get("query", "").strip()
-        if not query:
-            raise ValueError("query must not be empty")
-        clients = await db.search_clients(query)
-        if not clients:
-            return f"No clients found matching '{query}'."
-        lines = [f"Found {len(clients)} client(s) matching '{query}':"]
-        for c in clients:
-            lines.append(f"  • {c['name']}  (id: {c['id']})")
-        return "\n".join(lines)
-
-    if name == "get_client_profile":
-        client_id = args.get("client_id", "").strip()
-        client = await db.get_client(client_id)
-        if not client:
-            raise ValueError(f"Client '{client_id}' not found.")
-        profile = {
-            "id": client["id"],
-            "name": client["name"],
-            "initials": client["initials"],
-            "factFind": client.get("fact_find") or {},
-            "softKnowledge": client.get("soft_knowledge") or "",
-            "openItems": client.get("open_items") or [],
-        }
-        return json.dumps(profile, indent=2)
-
-    if name == "get_client_artifacts":
-        client_id = args.get("client_id", "").strip()
-        client = await db.get_client(client_id)
-        if not client:
-            raise ValueError(f"Client '{client_id}' not found.")
-        all_artifacts = client.get("saved_artifacts") or []
-        confirmed = [a for a in all_artifacts if a.get("confirmed")]
-        if not confirmed:
-            return f"No confirmed artifacts for client '{client_id}'."
-        output = []
-        for a in confirmed:
-            output.append({
-                "id": a.get("id"),
-                "type": a.get("type"),
-                "content": a.get("content"),
-                "confirmedAt": a.get("confirmedAt"),
-                "version": a.get("version"),
-            })
-        return json.dumps(output, indent=2)
-
-    if name == "get_client_recommendations":
-        client_id = args.get("client_id", "").strip()
-        client = await db.get_client(client_id)
-        if not client:
-            raise ValueError(f"Client '{client_id}' not found.")
-        recs = client.get("confirmed_recommendations") or []
-        if not recs:
-            return f"No confirmed recommendations for client '{client_id}'."
-        return json.dumps(recs, indent=2)
-
-    raise ValueError(f"Unknown tool: '{name}'")
+    if name not in READ_TOOLS:
+        raise ValueError(f"Tool '{name}' is not available via MCP.")
+    return await execute_read_tool(name, args)
 
 
 @router.post("/mcp")

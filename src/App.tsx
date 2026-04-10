@@ -3,6 +3,7 @@ import type { ClientData, ChatMessage, Artifact, DocumentAttachment } from './ty
 import {
   sendMessage,
   fetchClients,
+  fetchClient,
   apiCreateClient,
   apiUpdateClient,
   apiDeleteClient,
@@ -11,6 +12,8 @@ import {
   apiAddRecommendation,
   apiClearMessages,
   apiDeleteMessage,
+  confirmToolAction,
+  declineToolAction,
   API_BASE,
 } from './api';
 import { parseArtifacts } from './parseArtifacts';
@@ -179,36 +182,66 @@ export default function App() {
     };
 
     const streamTimestamp = new Date().toISOString();
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
 
-    let firstChunk = true;
+    // Add user message + empty assistant slot immediately so tool events
+    // have somewhere to land before the first text chunk arrives.
+    setMessages(prev => [
+      ...prev,
+      userMessage,
+      { role: 'assistant' as const, content: '', timestamp: streamTimestamp, toolUses: [], confirmationRequests: [] },
+    ]);
+    setIsLoading(true);
 
     try {
       const response = await sendMessage(
         content,
         clientId,
         documents,
+        // onChunk — append streaming text
         (chunk: string) => {
           if (!isStillThisClient()) return;
-          if (firstChunk) {
-            firstChunk = false;
-            setMessages(prev => [...prev, {
-              role: 'assistant' as const,
-              content: chunk,
-              timestamp: streamTimestamp,
-            }]);
-          } else {
-            setMessages(prev => {
-              const copy = [...prev];
-              const last = copy[copy.length - 1];
-              if (last?.role === 'assistant') {
-                copy[copy.length - 1] = { ...last, content: last.content + chunk };
-              }
-              return copy;
-            });
-          }
-        }
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === 'assistant') {
+              copy[copy.length - 1] = { ...last, content: last.content + chunk };
+            }
+            return copy;
+          });
+        },
+        // onToolUse — record which tools were called
+        (toolUse) => {
+          if (!isStillThisClient()) return;
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === 'assistant') {
+              copy[copy.length - 1] = {
+                ...last,
+                toolUses: [...(last.toolUses || []), toolUse],
+              };
+            }
+            return copy;
+          });
+        },
+        // onConfirmationRequest — record pending write-tool actions
+        (req) => {
+          if (!isStillThisClient()) return;
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === 'assistant') {
+              copy[copy.length - 1] = {
+                ...last,
+                confirmationRequests: [
+                  ...(last.confirmationRequests || []),
+                  { ...req, status: 'pending' as const },
+                ],
+              };
+            }
+            return copy;
+          });
+        },
       );
 
       if (!isStillThisClient()) return;
@@ -369,6 +402,34 @@ export default function App() {
     await apiClearMessages(selectedClient.id).catch(() => {});
   }, [selectedClient]);
 
+  const handleConfirmAction = useCallback(async (confId: string) => {
+    if (!selectedClient) return;
+    await confirmToolAction(selectedClient.id, confId).catch(() => {});
+    // Mark as confirmed in message state
+    setMessages(prev => prev.map(msg => ({
+      ...msg,
+      confirmationRequests: msg.confirmationRequests?.map(r =>
+        r.id === confId ? { ...r, status: 'confirmed' as const } : r
+      ),
+    })));
+    // Reload client so any profile changes are reflected in the UI
+    fetchClient(selectedClient.id).then(updated => {
+      setClients(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+      setSelectedClient(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+    }).catch(() => {});
+  }, [selectedClient]);
+
+  const handleDeclineAction = useCallback(async (confId: string) => {
+    if (!selectedClient) return;
+    await declineToolAction(selectedClient.id, confId).catch(() => {});
+    setMessages(prev => prev.map(msg => ({
+      ...msg,
+      confirmationRequests: msg.confirmationRequests?.map(r =>
+        r.id === confId ? { ...r, status: 'declined' as const } : r
+      ),
+    })));
+  }, [selectedClient]);
+
   const handleRenameClient = useCallback(async (clientId: string, newName: string) => {
     const newInitials = newName.split(' ').map(w => w[0]?.toUpperCase() || '').join('').slice(0, 2);
     setClients(prev => prev.map(c => {
@@ -515,6 +576,8 @@ export default function App() {
         onSendMessage={handleSendMessage}
         onAddDocuments={handleAddDocuments}
         onDeleteMessage={handleDeleteMessage}
+        onConfirmAction={handleConfirmAction}
+        onDeclineAction={handleDeclineAction}
       />
 
       <ArtifactPanel
